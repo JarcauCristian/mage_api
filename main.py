@@ -8,7 +8,8 @@ import os
 import base64
 from time import sleep
 from starlette.responses import JSONResponse
-from utils.models import RunPipeline
+from utils.pipelines import find_pipeline
+from utils.models import Pipeline
 
 load_dotenv()
 
@@ -92,21 +93,28 @@ async def pipeline_status(pipeline_id: int):
 
 
 @app.post("/run_pipeline")
-async def run_pipeline(run: RunPipeline):
-    url = f"{os.getenv('BASE_URL')}/api/pipeline_schedules/{run.pipeline_id}/pipeline_runs/{run.trigger_id}"
-    headers = {
+async def run_pipeline(pipeline: Pipeline):
+
+    if pipeline is None:
+        return JSONResponse(status_code=400, content="The body of the requests is incorrect!")
+
+    desire_pipeline = find_pipeline(pipeline.type)
+
+    url = (f"{os.getenv('BASE_URL')}/api/pipeline_schedules/{desire_pipeline['id']}/pipeline_runs/"
+           f"{desire_pipeline['run_id']}")
+    body = {
         "pipeline_run": {
             "variables": {
-                json.dumps(run.variables)
+                json.dumps(pipeline.variables)
             }
         }
     }
-    response = requests.post(url, headers=headers)
+    response = requests.post(url, data=json.dumps(body))
 
     if response.status_code != 200:
         return JSONResponse(status_code=500, content="Starting the pipeline didn't work!")
 
-    return JSONResponse(status_code=201, content="Pipeline started successfully!")
+    return JSONResponse(status_code=201, content=desire_pipeline)
 
 
 if __name__ == '__main__':

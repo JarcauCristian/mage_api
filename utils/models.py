@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 
 
-class RunPipeline(BaseModel):
-    pipeline_id: int
-    trigger_id: str
+class Pipeline(BaseModel):
     variables: dict[str, str]
+    type: str
