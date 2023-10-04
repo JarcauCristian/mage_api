@@ -20,7 +20,7 @@ token: str = ""
 expires: float = 0.0
 
 
-def get_session_token() -> dict | None:
+def get_session_token() -> bool:
     url = os.getenv("BASE_URL") + "/api/sessions"
     headers = {
         "Content-Type": "application/json",
@@ -36,13 +36,14 @@ def get_session_token() -> dict | None:
     response = requests.post(url, data=json.dumps(data), headers=headers)
 
     if response.status_code != 200:
-        return None
+        return False
 
     body = json.loads(response.content.decode('utf-8'))
     global token, expires
     decode_token = json.loads(base64.b64decode(body['session']['token'].split('.')[1].encode('utf-8') + b'=='))
     token = decode_token['token']
     expires = float(decode_token['expires'])
+    return True
 
 
 def check_token_expired() -> bool:
@@ -98,23 +99,52 @@ async def run_pipeline(pipeline: Pipeline):
     if pipeline is None:
         return JSONResponse(status_code=400, content="The body of the requests is incorrect!")
 
-    desire_pipeline = find_pipeline(pipeline.type)
+    desire_pipeline = find_pipeline(pipeline.name)
 
     url = (f"{os.getenv('BASE_URL')}/api/pipeline_schedules/{desire_pipeline['id']}/pipeline_runs/"
            f"{desire_pipeline['run_id']}")
     body = {
         "pipeline_run": {
             "variables": {
-                json.dumps(pipeline.variables)
+
             }
         }
     }
-    response = requests.post(url, data=json.dumps(body))
+    for k, v in pipeline.variables.items():
+        body['pipeline_run']['variables'][k] = v
+
+    response = requests.post(url, data=json.dumps(body, indent=4))
 
     if response.status_code != 200:
         return JSONResponse(status_code=500, content="Starting the pipeline didn't work!")
 
     return JSONResponse(status_code=201, content=desire_pipeline)
+
+
+@app.get("/read_pipeline")
+async def read_pipeline(pipeline_name: str):
+    result = True
+    if check_token_expired():
+        result = get_session_token()
+
+    if not result:
+        return JSONResponse(status_code=500, content="Could not get the token!")
+
+    if pipeline_name != "":
+        if find_pipeline(pipeline_name):
+            headers = {
+                "Authorization": f"Bearer {token}"
+            }
+
+            response = requests.get(f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}?api_key='
+                                    f'{os.getenv("X-API-KEY")}', headers=headers)
+
+            if response.status_code != 200:
+                return JSONResponse(status_code=500, content="Could not get pipeline result!")
+
+            return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
+
+    return JSONResponse(status_code=400, content="Pipeline name should not be empty!")
 
 
 if __name__ == '__main__':
