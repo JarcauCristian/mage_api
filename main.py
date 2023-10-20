@@ -8,8 +8,10 @@ import os
 import base64
 from time import sleep
 from starlette.responses import JSONResponse
-from utils.pipelines import find_pipeline
+from utils.pipelines import find_pipeline, parse_pipelines
 from utils.models import Pipeline
+from pprint import pprint
+from pathlib import Path
 
 load_dotenv()
 
@@ -24,7 +26,7 @@ def get_session_token() -> bool:
     url = os.getenv("BASE_URL") + "/api/sessions"
     headers = {
         "Content-Type": "application/json",
-        "X-API-KEY": os.getenv("X-API-KEY")
+        "X-API-KEY": os.getenv("API-KEY")
     }
     data = {
         "session": {
@@ -34,7 +36,6 @@ def get_session_token() -> bool:
     }
 
     response = requests.post(url, data=json.dumps(data), headers=headers)
-
     if response.status_code != 200:
         return False
 
@@ -71,7 +72,12 @@ async def pipeline_status(pipeline_id: int):
     response = requests.get(url, headers=headers)
 
     if response.status_code != 200:
-        return JSONResponse(status_code=500, content="Could not get the status for the pipeline!")
+        return JSONResponse(status_code=response.status_code, content="Something happened with the server!")
+
+    json_response = dict(response.json())
+
+    if json_response.get("error") is not None:
+        return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
 
     body = json.loads(response.content.decode('utf-8'))['pipeline_runs'][0]
     while body['status'] != "completed":
@@ -91,6 +97,30 @@ async def pipeline_status(pipeline_id: int):
         body = json.loads(response.content.decode('utf-8'))['pipeline_runs'][0]
         sleep(.5)
     return JSONResponse(status_code=200, content={"status"})
+
+
+@app.get('/')
+async def get_pipelines():
+    pipelines_url = os.getenv('BASE_URL') + f'/api/pipelines?api_key={os.getenv("API-KEY")}'
+    if check_token_expired():
+        get_session_token()
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {token}'
+    }
+
+    response = requests.get(pipelines_url, headers=headers)
+
+    if response.status_code != 200:
+        return JSONResponse(status_code=response.status_code, content="Something happened with the server!")
+
+    json_response = dict(response.json())
+
+    if json_response.get("error") is not None:
+        return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
+
+    parsed_pipelines = parse_pipelines(json_response['pipelines'])
+    return JSONResponse(status_code=200, content=parsed_pipelines)
 
 
 @app.post("/run_pipeline")
@@ -151,3 +181,4 @@ if __name__ == '__main__':
     get_session_token()
 
     uvicorn.run(app, host="0.0.0.0", port=7000)
+
