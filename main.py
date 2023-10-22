@@ -7,15 +7,28 @@ import uvicorn
 import os
 import base64
 from time import sleep
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from utils.pipelines import find_pipeline, parse_pipelines
 from utils.models import Pipeline
-from pprint import pprint
-from pathlib import Path
 
 load_dotenv()
 
 app = FastAPI()
+
+origins = [
+    "http://localhost:3000",
+    "https://localhost:3000",
+    "http://localhost:8080",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 token: str = ""
 
@@ -58,7 +71,7 @@ def check_token_expired() -> bool:
     return True
 
 
-@app.get('/pipeline_status')
+@app.get('/pipeline/status')
 async def pipeline_status(pipeline_id: int):
     if check_token_expired():
         get_session_token()
@@ -99,8 +112,8 @@ async def pipeline_status(pipeline_id: int):
     return JSONResponse(status_code=200, content={"status"})
 
 
-@app.get('/')
-async def get_pipelines():
+@app.get('/pipelines')
+async def pipelines(pipeline_type: str = ""):
     pipelines_url = os.getenv('BASE_URL') + f'/api/pipelines?api_key={os.getenv("API-KEY")}'
     if check_token_expired():
         get_session_token()
@@ -118,12 +131,11 @@ async def get_pipelines():
 
     if json_response.get("error") is not None:
         return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
-
-    parsed_pipelines = parse_pipelines(json_response['pipelines'])
+    parsed_pipelines = parse_pipelines(json_response['pipelines'], pipeline_type=pipeline_type)
     return JSONResponse(status_code=200, content=parsed_pipelines)
 
 
-@app.post("/run_pipeline")
+@app.post("/pipeline/run")
 async def run_pipeline(pipeline: Pipeline):
 
     if pipeline is None:
@@ -151,7 +163,7 @@ async def run_pipeline(pipeline: Pipeline):
     return JSONResponse(status_code=201, content=desire_pipeline)
 
 
-@app.get("/read_pipeline")
+@app.get("/pipeline/read")
 async def read_pipeline(pipeline_name: str):
     result = True
     if check_token_expired():

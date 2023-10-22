@@ -22,18 +22,20 @@ data_exporters = {
 }
 
 
-def parse_pipelines(pipelines: List[Dict[str, Any]]):
+def parse_pipelines(pipelines: List[Dict[str, Any]], pipeline_type: str = ""):
     parsed_pipelines = []
     for pipeline in pipelines:
         blocks = []
-        if pipeline.get("uuid").find("licenta") != -1:
+        if pipeline.get("uuid").find("licenta") != -1 and pipeline.get("uuid").find(pipeline_type) != -1:
             for block in pipeline["blocks"]:
                 blocks.append({
                     "name": block["uuid"],
-                    "type": block["type"]
+                    "type": block["type"],
+                    "variables": list(dict(block.get("configuration")).keys())
                 })
             parsed_pipelines.append({
-                "pipeline_name": pipeline.get("uuid"),
+                "name": pipeline.get("uuid"),
+                "description": pipeline.get("description"),
                 "blocks": blocks
             })
     return parsed_pipelines
