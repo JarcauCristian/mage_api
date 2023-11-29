@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 import requests
 from dotenv import load_dotenv
 import uvicorn
@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from utils.pipelines import find_pipeline, parse_pipelines
 from utils.models import Pipeline
+from statistics.csv_statistics import CSVLoader
 
 load_dotenv()
 
@@ -39,7 +40,7 @@ def get_session_token() -> bool:
     url = os.getenv("BASE_URL") + "/api/sessions"
     headers = {
         "Content-Type": "application/json",
-        "X-API-KEY": os.getenv("API-KEY")
+        "X-API-KEY": os.getenv("API_KEY")
     }
     data = {
         "session": {
@@ -114,7 +115,7 @@ async def pipeline_status(pipeline_id: int):
 
 @app.get('/pipelines')
 async def pipelines(pipeline_type: str = ""):
-    pipelines_url = os.getenv('BASE_URL') + f'/api/pipelines?api_key={os.getenv("API-KEY")}'
+    pipelines_url = os.getenv('BASE_URL') + f'/api/pipelines?api_key={os.getenv("API_KEY")}'
     if check_token_expired():
         get_session_token()
     headers = {
@@ -131,8 +132,9 @@ async def pipelines(pipeline_type: str = ""):
 
     if json_response.get("error") is not None:
         return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
-    parsed_pipelines = parse_pipelines(json_response['pipelines'], pipeline_type=pipeline_type)
-    return JSONResponse(status_code=200, content=parsed_pipelines)
+    for pipeline in json_response['pipelines']:
+        print(pipeline.get("uuid"))
+    return JSONResponse(status_code=200, content="parsed_pipelines")
 
 
 @app.post("/pipeline/run")
@@ -165,6 +167,7 @@ async def run_pipeline(pipeline: Pipeline):
 
 @app.get("/pipeline/read")
 async def read_pipeline(pipeline_name: str):
+    print(pipeline_name)
     result = True
     if check_token_expired():
         result = get_session_token()
@@ -173,20 +176,53 @@ async def read_pipeline(pipeline_name: str):
         return JSONResponse(status_code=500, content="Could not get the token!")
 
     if pipeline_name != "":
-        if find_pipeline(pipeline_name):
-            headers = {
-                "Authorization": f"Bearer {token}"
-            }
-
-            response = requests.get(f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}?api_key='
-                                    f'{os.getenv("X-API-KEY")}', headers=headers)
-
-            if response.status_code != 200:
-                return JSONResponse(status_code=500, content="Could not get pipeline result!")
-
-            return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
+        headers = {
+            "Authorization": f"Bearer {token}"
+        }
+        response = requests.get(f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}?api_key='
+                                f'{os.getenv("API_KEY")}', headers=headers)
+        if response.status_code != 200:
+            return JSONResponse(status_code=500, content="Could not get pipeline result!")
+        return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
 
     return JSONResponse(status_code=400, content="Pipeline name should not be empty!")
+
+
+@app.get("/block/read")
+async def read_block(block_name: str, pipeline_name: str):
+    result = True
+    if check_token_expired():
+        result = get_session_token()
+
+    if not result:
+        return JSONResponse(status_code=500, content="Could not get the token!")
+
+    if block_name != "" and pipeline_name != "":
+        headers = {
+            "Authorization": f"Bearer {token}"
+        }
+        response = requests.get(f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}/blocks/{block_name}?api_key='
+                                f'{os.getenv("API_KEY")}', headers=headers)
+        if response.status_code != 200:
+            return JSONResponse(status_code=500, content="Could not get pipeline result!")
+
+        print(response.content.decode('utf-8'))
+        return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
+
+    return JSONResponse(status_code=400, content="Pipeline name and Block name should not be empty!")
+
+
+@app.get('/get_statistics')
+async def get_statistics(dataset_path: str, req: Request):
+    auth_token = req.headers.get('Authorization')
+
+    if auth_token is None:
+        return JSONResponse(status_code=401, content="You don't have access to this component")
+
+    csv_loader = CSVLoader(path=dataset_path)
+    csv_loader.execute(auth_token.split(" ")[0])
+
+    return JSONResponse(status_code=200, content=csv_loader.get_statistics())
 
 
 if __name__ == '__main__':
