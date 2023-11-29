@@ -1,6 +1,6 @@
 import json
-from datetime import datetime
-from fastapi import FastAPI
+from datetime import datetime, timedelta, timezone
+from fastapi import FastAPI, WebSocket
 import requests
 from dotenv import load_dotenv
 import uvicorn
@@ -72,11 +72,11 @@ def check_token_expired() -> bool:
 
 
 @app.get('/pipeline/status')
-async def pipeline_status(pipeline_id: int):
+async def pipeline_status(pipeline_id: int, block_name: str = ""):
     if check_token_expired():
         get_session_token()
 
-    url = f'{os.getenv("BASE_URL")}/api/pipeline_schedules/{pipeline_id}/pipeline_runs?api_key={os.getenv("X-API-KEY")}'
+    url = f'{os.getenv("BASE_URL")}/api/pipeline_schedules/{pipeline_id}/pipeline_runs?api_key={os.getenv("API-KEY")}'
     headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {token}'
@@ -92,24 +92,35 @@ async def pipeline_status(pipeline_id: int):
     if json_response.get("error") is not None:
         return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
 
-    body = json.loads(response.content.decode('utf-8'))['pipeline_runs'][0]
-    while body['status'] != "completed":
-        if body['status'] == "failed":
-            break
-        url = f'{os.getenv("BASE_URL")}/api/pipeline_schedules/{pipeline_id}/pipeline_runs?api_key={os.getenv("X-API-KEY")}'
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {token}'
-        }
+    body = json.loads(response.content.decode('utf-8'))['pipeline_runs']
+    if len(body) == 0:
+        return JSONResponse(status_code=500, content="No pipelines")
+    else:
+            needed_block = None
+            for block in body[0]["block_runs"]:
+                if block["block_uuid"] == block_name:
+                    needed_block = block
+            if (datetime.now(timezone.utc) - datetime.strptime(needed_block["completed_at"], '%Y-%m-%d %H:%M:%S.%f%z')) > timedelta(minutes=2):
+                while (datetime.now(timezone.utc) - datetime.strptime(needed_block["completed_at"], '%Y-%m-%d %H:%M:%S.%f%z')) < timedelta(seconds=30):
+                    continue
+                return JSONResponse(status_code=200, content="Block Runed Successfully!")
+    # while body['status'] != "completed":
+    #     if body['status'] == "failed":
+    #         break
+    #     url = f'{os.getenv("BASE_URL")}/api/pipeline_schedules/{pipeline_id}/pipeline_runs?api_key={os.getenv("API-KEY")}'
+    #     headers = {
+    #         'Content-Type': 'application/json',
+    #         'Authorization': f'Bearer {token}'
+    #     }
 
-        response = requests.get(url, headers=headers)
+    #     response = requests.get(url, headers=headers)
 
-        if response.status_code != 200:
-            return JSONResponse(status_code=500, content="Could not get the status for the pipeline!")
+    #     if response.status_code != 200:
+    #         return JSONResponse(status_code=500, content="Could not get the status for the pipeline!")
 
-        body = json.loads(response.content.decode('utf-8'))['pipeline_runs'][0]
-        sleep(.5)
-    return JSONResponse(status_code=200, content={"status"})
+    #     body = json.loads(response.content.decode('utf-8'))['pipeline_runs'][0]
+    #     sleep(.5)
+    return JSONResponse(status_code=200, content="status")
 
 
 @app.get('/pipelines')
@@ -131,8 +142,11 @@ async def pipelines(pipeline_type: str = ""):
 
     if json_response.get("error") is not None:
         return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
-    parsed_pipelines = parse_pipelines(json_response['pipelines'], pipeline_type=pipeline_type)
-    return JSONResponse(status_code=200, content=parsed_pipelines)
+    pipeline_names = []
+    print(json_response['pipelines'])
+    for pipeline in json_response['pipelines']:
+        pipeline_names.append(pipeline.get("uuid"))
+    return JSONResponse(status_code=200, content=pipeline_names)
 
 
 @app.post("/pipeline/run")
@@ -168,23 +182,21 @@ async def read_pipeline(pipeline_name: str):
     result = True
     if check_token_expired():
         result = get_session_token()
-
     if not result:
         return JSONResponse(status_code=500, content="Could not get the token!")
 
     if pipeline_name != "":
-        if find_pipeline(pipeline_name):
-            headers = {
-                "Authorization": f"Bearer {token}"
-            }
+        headers = {
+            "Authorization": f"Bearer {token}"
+        }
 
-            response = requests.get(f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}?api_key='
-                                    f'{os.getenv("X-API-KEY")}', headers=headers)
+        response = requests.get(f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}?api_key='
+                                f'{os.getenv("API-KEY")}', headers=headers)
 
-            if response.status_code != 200:
-                return JSONResponse(status_code=500, content="Could not get pipeline result!")
+        if response.status_code != 200:
+            return JSONResponse(status_code=500, content="Could not get pipeline result!")
 
-            return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
+        return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
 
     return JSONResponse(status_code=400, content="Pipeline name should not be empty!")
 
