@@ -1,11 +1,8 @@
 import json
-<<<<<<< HEAD
 from datetime import datetime
 from fastapi import FastAPI, Request
-=======
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, WebSocket
->>>>>>> 66718ccfd8a07cdb9d8c3efdf31d986c4d16fdb0
 import requests
 from dotenv import load_dotenv
 import uvicorn
@@ -82,7 +79,7 @@ async def pipeline_status(pipeline_id: int, block_name: str = ""):
     if check_token_expired():
         get_session_token()
 
-    url = f'{os.getenv("BASE_URL")}/api/pipeline_schedules/{pipeline_id}/pipeline_runs?api_key={os.getenv("API-KEY")}'
+    url = f'{os.getenv("BASE_URL")}/api/pipeline_schedules/{pipeline_id}/pipeline_runs?api_key={os.getenv("API_KEY")}'
     headers = {
         'Content-Type': 'application/json',
         'Authorization': f'Bearer {token}'
@@ -100,32 +97,34 @@ async def pipeline_status(pipeline_id: int, block_name: str = ""):
 
     body = json.loads(response.content.decode('utf-8'))['pipeline_runs']
     if len(body) == 0:
-        return JSONResponse(status_code=500, content="No pipelines")
+        return JSONResponse(status_code=500, content="No pipelines runs")
     else:
-            needed_block = None
+        needed_block = None
+        for block in body[0]["block_runs"]:
+            if block["block_uuid"] == block_name:
+                needed_block = block
+        while needed_block["status"] not in ["completed", "failed", "cancelled", "upstream_failed"]:
+            print(needed_block["status"])
+            response = requests.get(url, headers=headers)
+
+            if response.status_code != 200:
+                return JSONResponse(status_code=response.status_code, content="Something happened with the server!")
+
+            json_response = dict(response.json())
+
+            if json_response.get("error") is not None:
+                return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
+
+            body = json.loads(response.content.decode('utf-8'))['pipeline_runs']
             for block in body[0]["block_runs"]:
                 if block["block_uuid"] == block_name:
                     needed_block = block
-            if (datetime.now(timezone.utc) - datetime.strptime(needed_block["completed_at"], '%Y-%m-%d %H:%M:%S.%f%z')) > timedelta(minutes=2):
-                while (datetime.now(timezone.utc) - datetime.strptime(needed_block["completed_at"], '%Y-%m-%d %H:%M:%S.%f%z')) < timedelta(seconds=30):
-                    continue
-                return JSONResponse(status_code=200, content="Block Runed Successfully!")
-    # while body['status'] != "completed":
-    #     if body['status'] == "failed":
-    #         break
-    #     url = f'{os.getenv("BASE_URL")}/api/pipeline_schedules/{pipeline_id}/pipeline_runs?api_key={os.getenv("API-KEY")}'
-    #     headers = {
-    #         'Content-Type': 'application/json',
-    #         'Authorization': f'Bearer {token}'
-    #     }
 
-    #     response = requests.get(url, headers=headers)
-
-    #     if response.status_code != 200:
-    #         return JSONResponse(status_code=500, content="Could not get the status for the pipeline!")
-
-    #     body = json.loads(response.content.decode('utf-8'))['pipeline_runs'][0]
-    #     sleep(.5)
+        if needed_block["status"] == "completed":
+            return JSONResponse(status_code=200, content="Block Ran Successfully!")
+        elif needed_block["status"] == "failed" or needed_block["status"] == "cancelled" or needed_block["status"] \
+                == "upstream_failed":
+            return JSONResponse(status_code=500, content="Block Failed")
     return JSONResponse(status_code=200, content="status")
 
 
@@ -148,17 +147,11 @@ async def pipelines(pipeline_type: str = ""):
 
     if json_response.get("error") is not None:
         return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
-<<<<<<< HEAD
-    for pipeline in json_response['pipelines']:
-        print(pipeline.get("uuid"))
-    return JSONResponse(status_code=200, content="parsed_pipelines")
-=======
     pipeline_names = []
     print(json_response['pipelines'])
     for pipeline in json_response['pipelines']:
         pipeline_names.append(pipeline.get("uuid"))
     return JSONResponse(status_code=200, content=pipeline_names)
->>>>>>> 66718ccfd8a07cdb9d8c3efdf31d986c4d16fdb0
 
 
 @app.post("/pipeline/run")
@@ -202,20 +195,13 @@ async def read_pipeline(pipeline_name: str):
         headers = {
             "Authorization": f"Bearer {token}"
         }
-<<<<<<< HEAD
+
         response = requests.get(f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}?api_key='
                                 f'{os.getenv("API_KEY")}', headers=headers)
-        if response.status_code != 200:
-            return JSONResponse(status_code=500, content="Could not get pipeline result!")
-=======
-
-        response = requests.get(f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}?api_key='
-                                f'{os.getenv("API-KEY")}', headers=headers)
 
         if response.status_code != 200:
             return JSONResponse(status_code=500, content="Could not get pipeline result!")
 
->>>>>>> 66718ccfd8a07cdb9d8c3efdf31d986c4d16fdb0
         return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
 
     return JSONResponse(status_code=400, content="Pipeline name should not be empty!")
