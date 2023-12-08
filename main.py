@@ -1,6 +1,7 @@
+import io
 import json
 from datetime import datetime
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, UploadFile
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, WebSocket
 import requests
@@ -72,6 +73,39 @@ def check_token_expired() -> bool:
         return False
 
     return True
+
+
+@app.put('/pipeline/create')
+async def pipeline_create(name: str):
+    if check_token_expired():
+        get_session_token()
+
+    url = f'{os.getenv("BASE_URL")}/api/pipelines'
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {token}',
+        'X-API-KEY': os.getenv("API_KEY")
+    }
+
+    data = {
+        "pipeline": {
+            "name": name,
+            "type": "python",
+        }
+    }
+
+    response = requests.post(url, headers=headers, data=json.dumps(data))
+
+    if response.status_code != 200:
+        return JSONResponse(status_code=response.status_code, content="Something happened with the server!")
+
+    json_response = dict(response.json())
+
+    if json_response.get("error") is not None:
+        return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
+
+    return JSONResponse(status_code=201, content="Pipeline Created")
 
 
 @app.get('/pipeline/status')
@@ -222,6 +256,42 @@ async def read_block(block_name: str, pipeline_name: str):
         }
         response = requests.get(f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}/blocks/{block_name}?api_key='
                                 f'{os.getenv("API_KEY")}', headers=headers)
+        if response.status_code != 200:
+            return JSONResponse(status_code=500, content="Could not get pipeline result!")
+
+        print(response.content.decode('utf-8'))
+        return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
+
+    return JSONResponse(status_code=400, content="Pipeline name and Block name should not be empty!")
+
+
+@app.get("/block/create")
+async def read_block(block_name: str, pipeline_name: str, file: UploadFile):
+    result = True
+    if check_token_expired():
+        result = get_session_token()
+
+    if not result:
+        return JSONResponse(status_code=500, content="Could not get the token!")
+
+    if block_name != "" and pipeline_name != "":
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}"
+        }
+
+        print(str(file.file.read()))
+        data = {
+            "blocks": {
+                "name": block_name,
+                "priority": 0,
+                "language": "python",
+                "type": "custom",
+                "content": "import os\n @data_loader\n def data_loader():\n     print(\"Hello\")\n"
+            },
+            "api_key": os.getenv("API_KEY")
+        }
+        response = requests.get(f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}/blocks', headers=headers, data=json.dumps(data))
         if response.status_code != 200:
             return JSONResponse(status_code=500, content="Could not get pipeline result!")
 
