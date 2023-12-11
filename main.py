@@ -155,10 +155,10 @@ async def pipeline_status(pipeline_id: int, block_name: str = ""):
                     needed_block = block
 
         if needed_block["status"] == "completed":
-            return JSONResponse(status_code=200, content="Block Ran Successfully!")
+            return JSONResponse(status_code=200, content="completed")
         elif needed_block["status"] == "failed" or needed_block["status"] == "cancelled" or needed_block["status"] \
                 == "upstream_failed":
-            return JSONResponse(status_code=500, content="Block Failed")
+            return JSONResponse(status_code=500, content="failed")
     return JSONResponse(status_code=200, content="status")
 
 
