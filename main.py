@@ -1,6 +1,8 @@
 import io
 import json
 from datetime import datetime
+from typing import Any
+
 from fastapi import FastAPI, Request, UploadFile
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, WebSocket
@@ -12,8 +14,8 @@ import base64
 from time import sleep
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
-from utils.pipelines import find_pipeline, parse_pipelines
-from utils.models import Pipeline
+from utils.pipelines import parse_pipelines
+from utils.models import Pipeline, Block
 from statistics.csv_statistics import CSVLoader
 
 load_dotenv()
@@ -163,7 +165,7 @@ async def pipeline_status(pipeline_id: int, block_name: str = ""):
 
 
 @app.get('/pipelines')
-async def pipelines(pipeline_type: str = ""):
+async def pipelines():
     pipelines_url = os.getenv('BASE_URL') + f'/api/pipelines?api_key={os.getenv("API_KEY")}'
     if check_token_expired():
         get_session_token()
@@ -181,39 +183,36 @@ async def pipelines(pipeline_type: str = ""):
 
     if json_response.get("error") is not None:
         return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
-    pipeline_names = []
-    print(json_response['pipelines'])
-    for pipeline in json_response['pipelines']:
-        pipeline_names.append(pipeline.get("uuid"))
-    return JSONResponse(status_code=200, content=pipeline_names)
+    parsed_pipelines = parse_pipelines(json_response['pipelines'])
+    return JSONResponse(status_code=200, content=parsed_pipelines)
 
 
-@app.post("/pipeline/run")
-async def run_pipeline(pipeline: Pipeline):
-
-    if pipeline is None:
-        return JSONResponse(status_code=400, content="The body of the requests is incorrect!")
-
-    desire_pipeline = find_pipeline(pipeline.name)
-
-    url = (f"{os.getenv('BASE_URL')}/api/pipeline_schedules/{desire_pipeline['id']}/pipeline_runs/"
-           f"{desire_pipeline['run_id']}")
-    body = {
-        "pipeline_run": {
-            "variables": {
-
-            }
-        }
-    }
-    for k, v in pipeline.variables.items():
-        body['pipeline_run']['variables'][k] = v
-
-    response = requests.post(url, data=json.dumps(body, indent=4))
-
-    if response.status_code != 200:
-        return JSONResponse(status_code=500, content="Starting the pipeline didn't work!")
-
-    return JSONResponse(status_code=201, content=desire_pipeline)
+# @app.post("/pipeline/run")
+# async def run_pipeline(pipeline: Pipeline):
+#
+#     if pipeline is None:
+#         return JSONResponse(status_code=400, content="The body of the requests is incorrect!")
+#
+#     desire_pipeline = find_pipeline(pipeline.name)
+#
+#     url = (f"{os.getenv('BASE_URL')}/api/pipeline_schedules/{desire_pipeline['id']}/pipeline_runs/"
+#            f"{desire_pipeline['run_id']}")
+#     body = {
+#         "pipeline_run": {
+#             "variables": {
+#
+#             }
+#         }
+#     }
+#     for k, v in pipeline.variables.items():
+#         body['pipeline_run']['variables'][k] = v
+#
+#     response = requests.post(url, data=json.dumps(body, indent=4))
+#
+#     if response.status_code != 200:
+#         return JSONResponse(status_code=500, content="Starting the pipeline didn't work!")
+#
+#     return JSONResponse(status_code=201, content=desire_pipeline)
 
 
 @app.get("/pipeline/read")
@@ -259,14 +258,13 @@ async def read_block(block_name: str, pipeline_name: str):
         if response.status_code != 200:
             return JSONResponse(status_code=500, content="Could not get pipeline result!")
 
-        print(response.content.decode('utf-8'))
         return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
 
     return JSONResponse(status_code=400, content="Pipeline name and Block name should not be empty!")
 
 
-@app.get("/block/create")
-async def read_block(block_name: str, pipeline_name: str, file: UploadFile):
+@app.put("/block/update")
+async def update_block(block: Block):
     result = True
     if check_token_expired():
         result = get_session_token()
@@ -274,31 +272,26 @@ async def read_block(block_name: str, pipeline_name: str, file: UploadFile):
     if not result:
         return JSONResponse(status_code=500, content="Could not get the token!")
 
-    if block_name != "" and pipeline_name != "":
+    if block.block_name != "" and block.pipeline_name != "" and block.content != "":
         headers = {
+            'Accept': 'application/json, text/plain, */*',
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {token}"
+            "Authorization": f"Bearer {token}",
+            "X-API-KEY": os.getenv("API_KEY")
         }
-
-        print(str(file.file.read()))
-        data = {
-            "blocks": {
-                "name": block_name,
-                "priority": 0,
-                "language": "python",
-                "type": "custom",
-                "content": "import os\n @data_loader\n def data_loader():\n     print(\"Hello\")\n"
-            },
-            "api_key": os.getenv("API_KEY")
-        }
-        response = requests.get(f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}/blocks', headers=headers, data=json.dumps(data))
+        parsed_content = block.content.replace("\n", "\\n")
+        # \n"name": "{block.block_name}",\n"content": "{parsed_content}",\n
+        payload = (f'{{"block": {{"type": "data_exporter"}}'
+                   f'}}')
+        print(payload)
+        response = requests.request("PUT", url=f'{os.getenv("BASE_URL")}/api/pipelines/{block.pipeline_name}'
+                                               f'/blocks/{block.block_name}?api_key={os.getenv("API_KEY")}', headers=headers, data=payload, allow_redirects=True)
         if response.status_code != 200:
-            return JSONResponse(status_code=500, content="Could not get pipeline result!")
+            return JSONResponse(status_code=500, content="Could not update block!")
 
-        print(response.content.decode('utf-8'))
         return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
 
-    return JSONResponse(status_code=400, content="Pipeline name and Block name should not be empty!")
+    return JSONResponse(status_code=400, content="Body Should not be empty!")
 
 
 @app.get('/get_statistics')
