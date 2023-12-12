@@ -9,4 +9,10 @@ class Pipeline(BaseModel):
 class Block(BaseModel):
     block_name: str
     pipeline_name: str
-    content: str
+
+
+class DeleteBlock(BaseModel):
+    block_name: str
+    block_type: str
+    pipeline_name: str
+    force: bool

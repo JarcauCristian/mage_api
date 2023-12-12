@@ -1,9 +1,10 @@
+import ast
 import io
 import json
 from datetime import datetime
-from typing import Any
+from typing import Any, Annotated
 
-from fastapi import FastAPI, Request, UploadFile
+from fastapi import FastAPI, Request, UploadFile, Form
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, WebSocket
 import requests
@@ -15,7 +16,7 @@ from time import sleep
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from utils.pipelines import parse_pipelines
-from utils.models import Pipeline, Block
+from utils.models import Pipeline, Block, DeleteBlock
 from statistics.csv_statistics import CSVLoader
 
 load_dotenv()
@@ -185,6 +186,10 @@ async def pipelines():
         return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
     parsed_pipelines = parse_pipelines(json_response['pipelines'])
     return JSONResponse(status_code=200, content=parsed_pipelines)
+    # names = []
+    # for pipe in json_response["pipelines"]:
+    #     names.append(pipe.get("name"))
+    # return JSONResponse(status_code=200, content=names)
 
 
 # @app.post("/pipeline/run")
@@ -263,6 +268,62 @@ async def read_block(block_name: str, pipeline_name: str):
     return JSONResponse(status_code=400, content="Pipeline name and Block name should not be empty!")
 
 
+@app.post("/block/create")
+async def block_create(block_name: Annotated[str, Form()], block_type: Annotated[str, Form()],
+                       pipeline_name: Annotated[str, Form()], downstream_blocks: Annotated[list[str], Form()],
+                       upstream_blocks: Annotated[list[str], Form()], file: UploadFile):
+    upstream_blocks = ast.literal_eval(upstream_blocks[0])
+    downstream_blocks = ast.literal_eval(downstream_blocks[0])
+    result = True
+    if check_token_expired():
+        result = get_session_token()
+
+    if not result:
+        return JSONResponse(status_code=500, content="Could not get the token!")
+
+    string_file = file.file.read().decode("utf-8").replace("\r", "")
+    parsed_string_file = string_file.replace("\n", "\\n")
+
+    if file.content_type == "text/yaml":
+        language = "yaml"
+    elif file.content_type == "application/octet-stream":
+        language = "python"
+    else:
+        return JSONResponse(status_code=400, content="File content type should only be: text/play, "
+                                                     "application/octet-stream")
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/plain, */*",
+        "Authorization": f"Bearer {token}",
+        "X-API-KEY": os.getenv("API_KEY")
+    }
+
+    payload = {
+        "block": {
+            "name": block_name,
+            "priority": 2,
+            "language": f"{language}",
+            "type": f"{block_type}",
+            "downstream_blocks": downstream_blocks,
+            "upstream_blocks": upstream_blocks,
+            "content": f"{parsed_string_file}"
+        },
+        "api-key": os.getenv("API_KEY")
+    }
+    payload = json.dumps(payload).replace("\\\\", "\\")
+    response = requests.request("POST", url=f'{os.getenv("base_url")}/api/pipelines/{pipeline_name}/blocks?'
+                                            f'api_key={os.getenv("API_KEY")}', headers=headers, data=payload)
+    print(response.json())
+    if response.status_code != 200:
+        return JSONResponse(status_code=500, content="Could not create block!")
+
+    if response.json().get("error") is not None:
+        return JSONResponse(status_code=500, content="Error occurred when creating the block!")
+
+    return JSONResponse(status_code=200, content="Block Created!")
+
+
 @app.put("/block/update")
 async def update_block(block: Block):
     result = True
@@ -281,8 +342,7 @@ async def update_block(block: Block):
         }
         parsed_content = block.content.replace("\n", "\\n")
         # \n"name": "{block.block_name}",\n"content": "{parsed_content}",\n
-        payload = (f'{{"block": {{"type": "data_exporter"}}'
-                   f'}}')
+        payload = '{"block": {"type": "data_exporter"}}'
         print(payload)
         response = requests.request("PUT", url=f'{os.getenv("BASE_URL")}/api/pipelines/{block.pipeline_name}'
                                                f'/blocks/{block.block_name}?api_key={os.getenv("API_KEY")}', headers=headers, data=payload, allow_redirects=True)
@@ -292,6 +352,31 @@ async def update_block(block: Block):
         return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
 
     return JSONResponse(status_code=400, content="Body Should not be empty!")
+
+
+@app.delete("/block/delete")
+async def delete_block(block: DeleteBlock):
+    result = True
+    if check_token_expired():
+        result = get_session_token()
+
+    if not result:
+        return JSONResponse(status_code=500, content="Could not get the token!")
+
+    if block.block_name == "" and block.pipeline_name == "":
+        return JSONResponse(status_code=400, content="Block should not be empty!")
+
+    response = requests.delete(f'{os.getenv("base_url")}/api/pipelines/{block.pipeline_name}/'
+                                          f'blocks/{block.block_name}?block_type={block.block_type}&'
+                                          f'api_key={os.getenv("API_KEY")}&force={block.force}')
+
+    if response.status_code != 200:
+        return JSONResponse(status_code=500, content="Could not delete block!")
+
+    if response.json().get("error") is not None:
+        return JSONResponse(status_code=500, content="Error occurred when deleting block!")
+
+    return JSONResponse(status_code=200, content="Block Deleted!")
 
 
 @app.get('/get_statistics')

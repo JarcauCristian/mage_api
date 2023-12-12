@@ -10,6 +10,7 @@ def parse_pipelines(pipelines: List[Dict[str, Any]]):
                 blocks.append({
                     "name": block["uuid"],
                     "type": block["type"],
+                    "language": block["language"],
                     "upstream_blocks": block["upstream_blocks"],
                     "downstream_blocks": block["downstream_blocks"],
                     "variables": list(dict(block.get("configuration")).keys())
