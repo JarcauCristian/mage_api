@@ -1,7 +1,7 @@
 import ast
 import io
 import json
-from datetime import datetime
+import yaml
 from typing import Any, Annotated
 
 from fastapi import FastAPI, Request, UploadFile, Form
@@ -14,7 +14,7 @@ import os
 import base64
 from time import sleep
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, StreamingResponse
 from utils.pipelines import parse_pipelines
 from utils.models import Pipeline, Block, DeleteBlock
 from statistics.csv_statistics import CSVLoader
@@ -263,7 +263,17 @@ async def read_block(block_name: str, pipeline_name: str):
         if response.status_code != 200:
             return JSONResponse(status_code=500, content="Could not get pipeline result!")
 
-        return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
+        data_stream = io.BytesIO(response.json()["block"]["content"].encode("utf-8"))
+
+        return_dict = {}
+        yaml_file = yaml.safe_load(data_stream)
+        for k, v in yaml_file.items():
+            if k == "connector_type" or k == "amqp_url_virtual_host":
+                return_dict[f"{k}_optional"] = v
+            else:
+                return_dict[f"{k}_required"] = v
+
+        return JSONResponse(content=return_dict, status_code=200)
 
     return JSONResponse(status_code=400, content="Pipeline name and Block name should not be empty!")
 
