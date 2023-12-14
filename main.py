@@ -186,46 +186,58 @@ async def pipelines():
     #     return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
     # parsed_pipelines = parse_pipelines(json_response['pipelines'])
     # return JSONResponse(status_code=200, content=parsed_pipelines)
+
     names = []
     for pipe in json_response["pipelines"]:
+        tag = None
+        for t in pipe.get("tags"):
+            if t in ["train", "data_preprocessing"]:
+                tag = t
+                break
         names.append({
             "name": pipe.get("name"),
-            "type": pipe.get("tags")[0] if len(pipe.get("tags")) > 0 else None
+            "type": tag
         })
     return JSONResponse(status_code=200, content=names)
 
 
-# @app.post("/pipeline/run")
-# async def run_pipeline(pipeline: Pipeline):
-#
-#     if pipeline is None:
-#         return JSONResponse(status_code=400, content="The body of the requests is incorrect!")
-#
-#     desire_pipeline = find_pipeline(pipeline.name)
-#
-#     url = (f"{os.getenv('BASE_URL')}/api/pipeline_schedules/{desire_pipeline['id']}/pipeline_runs/"
-#            f"{desire_pipeline['run_id']}")
-#     body = {
-#         "pipeline_run": {
-#             "variables": {
-#
-#             }
-#         }
-#     }
-#     for k, v in pipeline.variables.items():
-#         body['pipeline_run']['variables'][k] = v
-#
-#     response = requests.post(url, data=json.dumps(body, indent=4))
-#
-#     if response.status_code != 200:
-#         return JSONResponse(status_code=500, content="Starting the pipeline didn't work!")
-#
-#     return JSONResponse(status_code=201, content=desire_pipeline)
+@app.post("/pipeline/run")
+async def run_pipeline(pipe: Pipeline):
+    result = True
+    if check_token_expired():
+        result = get_session_token()
+    if not result:
+        return JSONResponse(status_code=500, content="Could not get the token!")
+
+    url = f"{os.getenv('BASE_URL')}/api/pipeline_schedules/{pipe.run_id}/api_trigger"
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {pipe.token}"
+    }
+
+    body = {
+        "pipeline_run": {
+            "variables": {
+
+            }
+        }
+    }
+    for k, v in pipe.variables.items():
+        body['pipeline_run']['variables'][k] = v
+
+    response = requests.post(url, headers=headers, data=json.dumps(body, indent=4))
+
+    if response.status_code != 200:
+        return JSONResponse(status_code=500, content="Starting the pipeline didn't work!")
+
+    print(response.json())
+
+    return JSONResponse(status_code=201, content="Pipeline Started Successfully!")
 
 
 @app.get("/pipeline/read")
 async def read_pipeline(pipeline_name: str):
-    print(pipeline_name)
     result = True
     if check_token_expired():
         result = get_session_token()
@@ -246,6 +258,44 @@ async def read_pipeline(pipeline_name: str):
         return JSONResponse(status_code=200, content=json.loads(response.content.decode('utf-8')))
 
     return JSONResponse(status_code=400, content="Pipeline name should not be empty!")
+
+
+@app.get("/pipeline/run_data")
+async def run_tag(pipeline_name: str):
+    result = True
+    if check_token_expired():
+        result = get_session_token()
+
+    if not result:
+        return JSONResponse(status_code=500, content="Could not get the token!")
+
+    url = f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline_name}?api_key={os.getenv("API_KEY")}'
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    response = requests.request("GET", url, headers=headers)
+
+    if response.status_code != 200:
+        return JSONResponse(content="Could not get pipeline data!", status_code=500)
+
+    if response.json().get("error") is not None:
+        return JSONResponse(content="Error when getting the pipeline!", status_code=500)
+
+    tag = {}
+
+    for t in response.json()["pipeline"]["tags"]:
+        if "run_id" in t:
+            tag["run_id"] = int(t.split(":")[1].strip())
+        elif "token" in t:
+            tag["token"] = t.split(":")[1].strip()
+
+    if tag == {}:
+        return JSONResponse(content="There are no run tags for this pipeline", status_code=404)
+
+    return JSONResponse(content=tag, status_code=200)
 
 
 @app.get("/block/read")

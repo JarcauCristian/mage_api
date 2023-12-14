@@ -1,9 +1,12 @@
+from typing import Any, Dict
+
 from pydantic import BaseModel
 
 
 class Pipeline(BaseModel):
-    variables: dict[str, str]
-    name: str
+    variables: Dict[str, Any]
+    run_id: int
+    token: str
 
 
 class Block(BaseModel):
