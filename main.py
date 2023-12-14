@@ -182,14 +182,17 @@ async def pipelines():
 
     json_response = dict(response.json())
 
-    if json_response.get("error") is not None:
-        return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
-    parsed_pipelines = parse_pipelines(json_response['pipelines'])
-    return JSONResponse(status_code=200, content=parsed_pipelines)
-    # names = []
-    # for pipe in json_response["pipelines"]:
-    #     names.append(pipe.get("name"))
-    # return JSONResponse(status_code=200, content=names)
+    # if json_response.get("error") is not None:
+    #     return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
+    # parsed_pipelines = parse_pipelines(json_response['pipelines'])
+    # return JSONResponse(status_code=200, content=parsed_pipelines)
+    names = []
+    for pipe in json_response["pipelines"]:
+        names.append({
+            "name": pipe.get("name"),
+            "type": pipe.get("tags")[0] if len(pipe.get("tags")) > 0 else None
+        })
+    return JSONResponse(status_code=200, content=names)
 
 
 # @app.post("/pipeline/run")
