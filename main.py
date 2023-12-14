@@ -228,10 +228,8 @@ async def run_pipeline(pipe: Pipeline):
 
     response = requests.post(url, headers=headers, data=json.dumps(body, indent=4))
 
-    if response.status_code != 200:
+    if response.status_code != 200 or response.json().get("error") is not None:
         return JSONResponse(status_code=500, content="Starting the pipeline didn't work!")
-
-    print(response.json())
 
     return JSONResponse(status_code=201, content="Pipeline Started Successfully!")
 
