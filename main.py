@@ -165,6 +165,36 @@ async def pipeline_status(pipeline_id: int, block_name: str = ""):
     return JSONResponse(status_code=200, content="status")
 
 
+@app.get("/block/model")
+async def block_model(pipeline_type: str, block_type: str):
+    if pipeline_type not in ["batch", "stream"]:
+        return JSONResponse(status_code=400, content="Pipeline Type can only be batch or stream!")
+
+    if block_type not in ["loader", "transformer", "exporter"]:
+        return JSONResponse(status_code=400, content="Block Type can only be loader, transformer, exporter!")
+
+    if pipeline_type == "batch":
+        if block_type == "loader":
+            with open("./block_models/batch/loader.py") as f:
+                return JSONResponse(content=f.read(), status_code=200)
+        elif block_type == "transformer":
+            with open("./block_models/batch/transformer.py") as f:
+                return JSONResponse(content=f.read(), status_code=200)
+        elif block_type == "exporter":
+            with open("./block_models/batch/exporter.py") as f:
+                return JSONResponse(content=f.read(), status_code=200)
+    elif pipeline_type == "stream":
+        if block_type == "loader":
+            with open("./block_models/streaming/loader.yaml") as f:
+                return JSONResponse(content=f.read(), status_code=200)
+        elif block_type == "transformer":
+            with open("./streaming/transformer.py") as f:
+                return JSONResponse(content=f.read(), status_code=200)
+        elif block_type == "exporter":
+            with open("./block_models/streaming/exporter.yaml") as f:
+                return JSONResponse(content=f.read(), status_code=200)
+
+
 @app.get('/pipelines')
 async def pipelines():
     pipelines_url = os.getenv('BASE_URL') + f'/api/pipelines?api_key={os.getenv("API_KEY")}'
