@@ -188,7 +188,7 @@ async def block_model(pipeline_type: str, block_type: str):
             with open("./block_models/streaming/loader.yaml") as f:
                 return JSONResponse(content=f.read(), status_code=200)
         elif block_type == "transformer":
-            with open("./streaming/transformer.py") as f:
+            with open("./block_models/streaming/transformer.py") as f:
                 return JSONResponse(content=f.read(), status_code=200)
         elif block_type == "exporter":
             with open("./block_models/streaming/exporter.yaml") as f:

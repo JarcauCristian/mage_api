@@ -1,4 +1,4 @@
-connector_type: postgres
+connector_type: postgres # this does not need to be changed
 database: database
 host: host
 password: password
