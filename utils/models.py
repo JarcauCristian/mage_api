@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from pydantic import BaseModel
 
@@ -12,6 +12,8 @@ class Pipeline(BaseModel):
 class Block(BaseModel):
     block_name: str
     pipeline_name: str
+    downstream_blocks: List[str]
+    upstream_blocks: List[str]
 
 
 class DeleteBlock(BaseModel):
