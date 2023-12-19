@@ -216,22 +216,22 @@ async def pipelines():
 
     json_response = dict(response.json())
 
-    # if json_response.get("error") is not None:
-    #     return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
-    # parsed_pipelines = parse_pipelines(json_response['pipelines'])
-    # return JSONResponse(status_code=200, content=parsed_pipelines)
+    if json_response.get("error") is not None:
+        return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
+    parsed_pipelines = parse_pipelines(json_response['pipelines'], "0e76a931_cbe3_4238_8de2_3f4c5b4b1ce4")
+    return JSONResponse(status_code=200, content=parsed_pipelines)
 
-    names = []
-    for pipe in json_response["pipelines"]:
-        tag = None
-        for t in pipe.get("tags"):
-            if t in ["train", "data_preprocessing"]:
-                tag = t
-                break
-        names.append({
-            "name": pipe.get("name"),
-            "type": tag
-        })
+    # names = []
+    # for pipe in json_response["pipelines"]:
+    #     tag = None
+    #     for t in pipe.get("tags"):
+    #         if t in ["train", "data_preprocessing"]:
+    #             tag = t
+    #             break
+    #     names.append({
+    #         "name": pipe.get("name"),
+    #         "type": tag
+    #     })
     return JSONResponse(status_code=200, content=names)
 
 
@@ -260,7 +260,16 @@ async def specific_pipelines(contains: str):
     if len(response.json().get("pipelines")) == 0:
         return JSONResponse(status_code=200, content=[])
 
-    pipes = parse_pipelines(response.json()["pipelines"])
+    pipes = []
+    for pipeline in response.json().get("pipelines"):
+        resp = requests.request("GET", f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline.get("uuid")}?'
+                                       f'api_key={os.getenv("API_KEY")}', headers=headers)
+
+        if resp.status_code == 200:
+            if resp.json().get("error") is None:
+                pipes.append(resp.json().get("pipeline"))
+
+    pipes = parse_pipelines(pipes, contains)
 
     return JSONResponse(status_code=200, content=pipes)
 
