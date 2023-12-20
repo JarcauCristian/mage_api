@@ -115,6 +115,42 @@ async def pipeline_create(name: str, ptype: str):
     return JSONResponse(status_code=201, content="Pipeline Created")
 
 
+@app.get('/pipeline/status_once')
+async def pipeline_status_once(pipeline_id: int, block_name: str = ""):
+    result = True
+    if check_token_expired():
+        result = get_session_token()
+    if not result:
+        return JSONResponse(status_code=500, content="Could not get the token!")
+
+    url = f'{os.getenv("BASE_URL")}/api/pipeline_schedules/{pipeline_id}/pipeline_runs?api_key={os.getenv("API_KEY")}'
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {token}'
+    }
+
+    response = requests.get(url, headers=headers)
+
+    if response.status_code != 200:
+        return JSONResponse(status_code=response.status_code, content="Something happened with the server!")
+
+    json_response = dict(response.json())
+
+    if json_response.get("error") is not None:
+        return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
+
+    body = json.loads(response.content.decode('utf-8'))['pipeline_runs']
+    if len(body) == 0:
+        return JSONResponse(status_code=500, content="No pipelines runs")
+    else:
+        needed_block = None
+        for block in body[0]["block_runs"]:
+            if block["block_uuid"] == block_name:
+                needed_block = block
+
+    return needed_block["status"]
+
+
 @app.get('/pipeline/status')
 async def pipeline_status(pipeline_id: int, block_name: str = ""):
     if check_token_expired():
@@ -145,7 +181,8 @@ async def pipeline_status(pipeline_id: int, block_name: str = ""):
             if block["block_uuid"] == block_name:
                 needed_block = block
         while needed_block["status"] not in ["completed", "failed", "cancelled", "upstream_failed"]:
-            print(needed_block["status"])
+            print("Status: ", needed_block["status"])
+            print("Name: ", needed_block["block_uuid"])
             response = requests.get(url, headers=headers)
 
             if response.status_code != 200:
@@ -215,23 +252,23 @@ async def pipelines():
         return JSONResponse(status_code=response.status_code, content="Something happened with the server!")
 
     json_response = dict(response.json())
+    #
+    # if json_response.get("error") is not None:
+    #     return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
+    # parsed_pipelines = parse_pipelines(json_response['pipelines'], "0e76a931_cbe3_4238_8de2_3f4c5b4b1ce4")
+    # return JSONResponse(status_code=200, content=parsed_pipelines)
 
-    if json_response.get("error") is not None:
-        return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
-    parsed_pipelines = parse_pipelines(json_response['pipelines'], "0e76a931_cbe3_4238_8de2_3f4c5b4b1ce4")
-    return JSONResponse(status_code=200, content=parsed_pipelines)
-
-    # names = []
-    # for pipe in json_response["pipelines"]:
-    #     tag = None
-    #     for t in pipe.get("tags"):
-    #         if t in ["train", "data_preprocessing"]:
-    #             tag = t
-    #             break
-    #     names.append({
-    #         "name": pipe.get("name"),
-    #         "type": tag
-    #     })
+    names = []
+    for pipe in json_response["pipelines"]:
+        tag = None
+        for t in pipe.get("tags"):
+            if t in ["train", "data_preprocessing"]:
+                tag = t
+                break
+        names.append({
+            "name": pipe.get("name"),
+            "type": tag
+        })
     return JSONResponse(status_code=200, content=names)
 
 
