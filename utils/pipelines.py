@@ -19,6 +19,7 @@ def parse_pipelines(pipelines: List[Dict[str, Any]], contains: str):
             parsed_pipelines.append({
                 "name": pipeline.get("uuid"),
                 "type": pipeline.get("type"),
+                "description": pipeline.get("description"),
                 "blocks": blocks
             })
     return parsed_pipelines

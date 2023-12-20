@@ -16,7 +16,7 @@ from time import sleep
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, StreamingResponse
 from utils.pipelines import parse_pipelines
-from utils.models import Pipeline, Block, DeleteBlock
+from utils.models import Pipeline, Block, DeleteBlock, Tags
 from statistics.csv_statistics import CSVLoader
 
 load_dotenv()
@@ -101,6 +101,7 @@ async def pipeline_create(name: str, ptype: str):
         "pipeline": {
             "name": name,
             "type": ptype,
+            "description": "not created"
         }
     }
 
@@ -456,6 +457,69 @@ async def read_block(block_name: str, pipeline_name: str):
     return JSONResponse(status_code=400, content="Pipeline name and Block name should not be empty!")
 
 
+@app.put("/pipeline/add_tags")
+async def add_tags(tags: Tags):
+    result = True
+    if check_token_expired():
+        result = get_session_token()
+
+    if not result:
+        return JSONResponse(status_code=500, content="Could not get the token!")
+
+    url = f'{os.getenv("BASE_URL")}/api/pipelines/{tags.name}'
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}",
+        "X-API-KEY": os.getenv("API_KEY")
+    }
+
+    data = {
+        "pipeline": {
+            "description": tags.tags
+        }
+    }
+
+    payload = json.dumps(data, indent=4)
+
+    response = requests.request("PUT", url, headers=headers, data=payload)
+
+    if response.status_code != 200:
+        return JSONResponse(status_code=400, content="Bad Request!")
+
+    if response.json().get("error") is not None:
+        return JSONResponse(status_code=500, content="Error from server!")
+
+    return JSONResponse(status_code=200, content="Pipeline updated successfully!")
+
+
+@app.get("/pipeline/description")
+async def description(name: str):
+    result = True
+    if check_token_expired():
+        result = get_session_token()
+
+    if not result:
+        return JSONResponse(status_code=500, content="Could not get the token!")
+
+    url = f'{os.getenv("BASE_URL")}/api/pipelines/{name}?api_key={os.getenv("API_KEY")}'
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    }
+
+    response = requests.request("GET", url, headers=headers)
+
+    if response.status_code != 200:
+        return JSONResponse(status_code=400, content="Bad Request!")
+
+    if response.json().get("error") is not None:
+        return JSONResponse(status_code=500, content="Error from server!")
+
+    return JSONResponse(status_code=200, content=response.json()["pipeline"]["description"])
+
+
 @app.post("/block/create")
 async def block_create(block_name: Annotated[str, Form()], block_type: Annotated[str, Form()],
                        pipeline_name: Annotated[str, Form()],
@@ -468,9 +532,6 @@ async def block_create(block_name: Annotated[str, Form()], block_type: Annotated
 
     if not result:
         return JSONResponse(status_code=500, content="Could not get the token!")
-
-    # string_file = file.file.read().decode("utf-8").replace("\r", "")
-    # parsed_string_file = string_file.replace("\n", "\\n")
 
     file_data = file.file.read().decode("utf-8").replace("\n", "\\n")
 

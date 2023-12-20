@@ -9,6 +9,11 @@ class Pipeline(BaseModel):
     token: str
 
 
+class Tags(BaseModel):
+    name: str
+    tags: str
+
+
 class Block(BaseModel):
     block_name: str
     pipeline_name: str
