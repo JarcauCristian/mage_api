@@ -1,10 +1,8 @@
-import ast
-import io
 import json
-import yaml
-from typing import Any, Annotated
 
-from fastapi import FastAPI, Request, UploadFile, Form
+from typing import Annotated
+
+from fastapi import FastAPI, Request, UploadFile, Form, Depends, HTTPException
 from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, WebSocket
 import requests
@@ -14,7 +12,7 @@ import os
 import base64
 from time import sleep
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse, StreamingResponse
+from starlette.responses import JSONResponse
 from utils.pipelines import parse_pipelines
 from utils.models import Pipeline, Block, DeleteBlock, Tags
 from statistics.csv_statistics import CSVLoader
@@ -40,6 +38,60 @@ app.add_middleware(
 token: str = ""
 
 expires: float = 0.0
+
+
+# async def get_redis():
+#     redis = await aioredis.Redis(host="192.168.184.128", port=6379)
+#     yield redis
+#     redis.close()
+#     await redis.wait_closed()
+
+
+# async def get_pipelines_from_redis_or_cache(contains: str, redis: aioredis.Redis = Depends(get_redis)):
+#     # Check if data is available in Redis
+#     cached_data = await redis.get(contains)
+#     if cached_data:
+#         return cached_data.decode("utf-8")
+#
+#     # If data is not in Redis, fetch it and cache it
+#     result = True
+#     if check_token_expired():
+#         result = get_session_token()
+#
+#     if not result:
+#         raise HTTPException(status_code=500, detail="Could not get the token!")
+#
+#     url = f'{os.getenv("BASE_URL")}/api/pipelines?api_key={os.getenv("API_KEY")}'
+#     headers = {
+#         "Content-Type": "application/json",
+#         "Authorization": f"Bearer {token}"
+#     }
+#
+#     response = requests.request("GET", url, headers=headers)
+#
+#     if response.status_code != 200:
+#         raise HTTPException(status_code=response.status_code, detail="Something happened with the server!")
+#
+#     if response.json().get("error") is not None:
+#         raise HTTPException(status_code=response.status_code, detail="Something happened with the server!")
+#
+#     if len(response.json().get("pipelines")) == 0:
+#         return "[]"
+#
+#     pipes = []
+#     for pipeline in response.json().get("pipelines"):
+#         resp = requests.request("GET", f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline.get("uuid")}?'
+#                                        f'api_key={os.getenv("API_KEY")}', headers=headers)
+#
+#         if resp.status_code == 200:
+#             if resp.json().get("error") is None:
+#                 pipes.append(resp.json().get("pipeline"))
+#
+#     pipes = parse_pipelines(pipes, contains)
+#
+#     await redis.set(contains, str(pipes))
+#
+#     return pipes
 
 
 def get_session_token() -> bool:
