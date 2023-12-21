@@ -9,9 +9,9 @@ class Pipeline(BaseModel):
     token: str
 
 
-class Tags(BaseModel):
+class Description(BaseModel):
     name: str
-    tags: str
+    description: str
 
 
 class Block(BaseModel):

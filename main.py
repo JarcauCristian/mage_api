@@ -14,7 +14,7 @@ from time import sleep
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from utils.pipelines import parse_pipelines
-from utils.models import Pipeline, Block, DeleteBlock, Tags
+from utils.models import Pipeline, Block, DeleteBlock, Description
 from statistics.csv_statistics import CSVLoader
 
 load_dotenv()
@@ -509,8 +509,8 @@ async def read_block(block_name: str, pipeline_name: str):
     return JSONResponse(status_code=400, content="Pipeline name and Block name should not be empty!")
 
 
-@app.put("/pipeline/add_tags")
-async def add_tags(tags: Tags):
+@app.put("/pipeline/description")
+async def put_description(desc: Description):
     result = True
     if check_token_expired():
         result = get_session_token()
@@ -518,7 +518,7 @@ async def add_tags(tags: Tags):
     if not result:
         return JSONResponse(status_code=500, content="Could not get the token!")
 
-    url = f'{os.getenv("BASE_URL")}/api/pipelines/{tags.name}'
+    url = f'{os.getenv("BASE_URL")}/api/pipelines/{desc.name}'
 
     headers = {
         "Content-Type": "application/json",
@@ -528,7 +528,7 @@ async def add_tags(tags: Tags):
 
     data = {
         "pipeline": {
-            "description": tags.tags
+            "description": desc.description
         }
     }
 
