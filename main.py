@@ -1,10 +1,8 @@
 import json
-
 from typing import Annotated
-
-from fastapi import FastAPI, Request, UploadFile, Form, Depends, HTTPException
+from fastapi import FastAPI, Request, UploadFile, Form
 from datetime import datetime, timedelta, timezone
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI
 import requests
 from dotenv import load_dotenv
 import uvicorn
@@ -13,6 +11,7 @@ import base64
 from time import sleep
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
+from redis_cache.cache import get_data_from_redis, is_data_stale, set_data_in_redis, update_timestamp
 from utils.pipelines import parse_pipelines
 from utils.models import Pipeline, Block, DeleteBlock, Description
 from statistics.csv_statistics import CSVLoader
@@ -38,60 +37,6 @@ app.add_middleware(
 token: str = ""
 
 expires: float = 0.0
-
-
-# async def get_redis():
-#     redis = await aioredis.Redis(host="192.168.184.128", port=6379)
-#     yield redis
-#     redis.close()
-#     await redis.wait_closed()
-
-
-# async def get_pipelines_from_redis_or_cache(contains: str, redis: aioredis.Redis = Depends(get_redis)):
-#     # Check if data is available in Redis
-#     cached_data = await redis.get(contains)
-#     if cached_data:
-#         return cached_data.decode("utf-8")
-#
-#     # If data is not in Redis, fetch it and cache it
-#     result = True
-#     if check_token_expired():
-#         result = get_session_token()
-#
-#     if not result:
-#         raise HTTPException(status_code=500, detail="Could not get the token!")
-#
-#     url = f'{os.getenv("BASE_URL")}/api/pipelines?api_key={os.getenv("API_KEY")}'
-#     headers = {
-#         "Content-Type": "application/json",
-#         "Authorization": f"Bearer {token}"
-#     }
-#
-#     response = requests.request("GET", url, headers=headers)
-#
-#     if response.status_code != 200:
-#         raise HTTPException(status_code=response.status_code, detail="Something happened with the server!")
-#
-#     if response.json().get("error") is not None:
-#         raise HTTPException(status_code=response.status_code, detail="Something happened with the server!")
-#
-#     if len(response.json().get("pipelines")) == 0:
-#         return "[]"
-#
-#     pipes = []
-#     for pipeline in response.json().get("pipelines"):
-#         resp = requests.request("GET", f'{os.getenv("BASE_URL")}/api/pipelines/{pipeline.get("uuid")}?'
-#                                        f'api_key={os.getenv("API_KEY")}', headers=headers)
-#
-#         if resp.status_code == 200:
-#             if resp.json().get("error") is None:
-#                 pipes.append(resp.json().get("pipeline"))
-#
-#     pipes = parse_pipelines(pipes, contains)
-#
-#     await redis.set(contains, str(pipes))
-#
-#     return pipes
 
 
 def get_session_token() -> bool:
@@ -305,11 +250,6 @@ async def pipelines():
         return JSONResponse(status_code=response.status_code, content="Something happened with the server!")
 
     json_response = dict(response.json())
-    #
-    # if json_response.get("error") is not None:
-    #     return JSONResponse(status_code=int(json_response.get('code')), content=json_response.get('message'))
-    # parsed_pipelines = parse_pipelines(json_response['pipelines'], "0e76a931_cbe3_4238_8de2_3f4c5b4b1ce4")
-    # return JSONResponse(status_code=200, content=parsed_pipelines)
 
     names = []
     for pipe in json_response["pipelines"]:
@@ -327,6 +267,14 @@ async def pipelines():
 
 @app.get("/pipelines/specific")
 async def specific_pipelines(contains: str):
+
+    cache_key = f"pipelines:{contains}"
+
+    cached_data = get_data_from_redis(cache_key)
+    if cached_data and not is_data_stale(cache_key, expire_time_seconds=600):
+        return JSONResponse(status_code=200, content=json.loads(cached_data.decode()))
+        
+
     result = True
     if check_token_expired():
         result = get_session_token()
@@ -360,6 +308,10 @@ async def specific_pipelines(contains: str):
                 pipes.append(resp.json().get("pipeline"))
 
     pipes = parse_pipelines(pipes, contains)
+
+    set_data_in_redis(cache_key, json.dumps(pipes), expire_time_seconds=600)
+
+    update_timestamp(cache_key)
 
     return JSONResponse(status_code=200, content=pipes)
 
